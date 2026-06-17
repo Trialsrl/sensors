@@ -107,7 +107,7 @@
 
 <header>
   <div class="brand">
-    <div class="kicker">ST25DV · 04 / 64KC</div>
+    <div class="kicker">ST25DV · 04 / 16 / 64KC</div>
     <h1>Config NFC</h1>
     <p>Scrivi e rileggi PPR e limiti angolari sul tag</p>
   </div>
@@ -118,20 +118,20 @@
   <div class="label">Parametri</div>
 
   <div class="field">
-    <div class="row"><label for="ppr">PPR · pulse per rotation</label><span class="hint">0 – 65535</span></div>
-    <div class="inwrap"><input id="ppr" type="number" min="0" max="65535" step="1" value="2048" inputmode="numeric"><span class="unit">pulse</span></div>
+    <div class="row"><label for="ppr">PPR · pulse per rotation</label><span class="hint">0 – 100</span></div>
+    <div class="inwrap"><input id="ppr" type="number" min="0" max="100" step="1" value="0" inputmode="numeric"><span class="unit">pulse</span></div>
     <div class="raw" id="ppr-raw"></div>
   </div>
 
   <div class="field">
-    <div class="row"><label for="la">Limit A</label><span class="hint">0,00 – 655,35°</span></div>
-    <div class="inwrap"><input id="la" type="number" min="0" max="655.35" step="0.01" value="45.34" inputmode="decimal"><span class="unit">°</span></div>
+    <div class="row"><label for="la">Limit A</label><span class="hint">0,00 – 360,00°</span></div>
+    <div class="inwrap"><input id="la" type="number" min="0" max="360" step="0.01" value="45.34" inputmode="decimal"><span class="unit">°</span></div>
     <div class="raw" id="la-raw"></div>
   </div>
 
   <div class="field">
-    <div class="row"><label for="lb">Limit B</label><span class="hint">0,00 – 655,35°</span></div>
-    <div class="inwrap"><input id="lb" type="number" min="0" max="655.35" step="0.01" value="312.50" inputmode="decimal"><span class="unit">°</span></div>
+    <div class="row"><label for="lb">Limit B</label><span class="hint">0,00 – 360,00°</span></div>
+    <div class="inwrap"><input id="lb" type="number" min="0" max="360" step="0.01" value="312.50" inputmode="decimal"><span class="unit">°</span></div>
     <div class="raw" id="lb-raw"></div>
   </div>
 </div>
@@ -167,15 +167,15 @@
 <details>
   <summary>Per il firmware — dove leggere via I2C <span class="ic">{ }</span></summary>
   <div class="fw">
-    <p>La memoria utente è leggibile in I2C a partire da <b style="color:var(--amber)">0x0000</b>. I primi byte sono il Capability Container: <b style="color:var(--ink)">4 byte sul 04KC</b>, <b style="color:var(--ink)">8 byte sul 64KC</b>. Questi 4 byte di differenza spostano tutto ciò che segue, quindi l'indirizzo assoluto del payload cambia tra i due chip. Il record scritto da questa app è di tipo MIME <code>application/octet-stream</code> con payload di 6 byte.</p>
+    <p>La memoria utente è leggibile in I2C a partire da <b style="color:var(--amber)">0x0000</b>. I primi byte sono il Capability Container: <b style="color:var(--ink)">4 byte sul 04KC</b>, <b style="color:var(--ink)">8 byte su 16KC e 64KC</b>. Questi 4 byte di differenza spostano tutto ciò che segue, quindi l'indirizzo assoluto del payload cambia solo tra il 04KC e gli altri due. Il record scritto da questa app è di tipo MIME <code>application/octet-stream</code> con payload di 6 byte.</p>
     <table>
-      <tr><th>Campo</th><th>Payload</th><th>04KC (CC 4B)</th><th>64KC (CC 8B)</th></tr>
+      <tr><th>Campo</th><th>Payload</th><th>04KC (CC 4B)</th><th>16 / 64KC (CC 8B)</th></tr>
       <tr><td>PPR</td><td>byte 0–1</td><td><b>0x21 (33)</b></td><td><b>0x25 (37)</b></td></tr>
       <tr><td>Limit A</td><td>byte 2–3</td><td><b>0x23 (35)</b></td><td><b>0x27 (39)</b></td></tr>
       <tr><td>Limit B</td><td>byte 4–5</td><td><b>0x25 (37)</b></td><td><b>0x29 (41)</b></td></tr>
     </table>
     <p>Il modo robusto, valido per <b style="color:var(--ink)">entrambi</b> i chip, è non fissare l'indirizzo ma fare il parsing del TLV: il parser sotto rileva da solo la lunghezza del CC dal byte 2 (<code>0x00</code> → CC di 8 byte). <b style="color:var(--ink)">Conferma una volta</b> con un dump I2C: dopo il CC deve esserci <code>0x03</code>.</p>
-<pre><span class="c">// Legge i 6 byte di payload dal tag — funziona su 04KC e 64KC.</span>
+<pre><span class="c">// Legge i 6 byte di payload dal tag — funziona su 04KC, 16KC e 64KC.</span>
 <span class="c">// buf = memoria utente letta da I2C a partire da 0x0000.</span>
 <span class="k">int</span> read_config(<span class="k">const uint8_t</span> *buf, <span class="k">uint16_t</span> *ppr,
                 <span class="k">uint16_t</span> *limA, <span class="k">uint16_t</span> *limB) {
@@ -212,9 +212,8 @@
     read: document.getElementById('btn-read')
   };
 
-  function pprVal(){ return clampInt(parseFloat(els.ppr.value), 0, 65535); }
-  function degToRaw(input){ var v = parseFloat(input.value); if(isNaN(v)) return NaN; return clampInt(Math.round(v*100), 0, 65535); }
-  function clampInt(v,lo,hi){ if(isNaN(v)) return NaN; v = Math.round(v); return v<lo?lo:(v>hi?hi:v); }
+  function pprVal(){ var v = parseFloat(els.ppr.value); if(isNaN(v)) return NaN; v = Math.round(v); return (v<0||v>100) ? NaN : v; }
+  function degToRaw(input){ var v = parseFloat(input.value); if(isNaN(v)) return NaN; if(v<0||v>360) return NaN; return Math.round(v*100); }
   function hx(b){ return b.toString(16).toUpperCase().padStart(2,'0'); }
 
   function bytesFor(value){
@@ -247,7 +246,7 @@
       html += '<div class="byte '+cls[i]+'"><div class="off">'+i+'</div><div class="hex">'+(p.ok?hx(p.buf[i]):'··')+'</div><div class="tag">'+tag[i]+'</div></div>';
     }
     els.map.innerHTML = html;
-    els.mapnote.innerHTML = 'Ordine: <b>'+(le?'little-endian':'big-endian')+'</b>. Nel tag questi 6 byte finiscono in coda al record NDEF — PPR all\'indirizzo I2C <b>0x21</b> sul 04KC, <b>0x25</b> sul 64KC. Vedi “Per il firmware”.';
+    els.mapnote.innerHTML = 'Ordine: <b>'+(le?'little-endian':'big-endian')+'</b>. Nel tag questi 6 byte finiscono in coda al record NDEF — PPR all\'indirizzo I2C <b>0x21</b> sul 04KC, <b>0x25</b> su 16/64KC. Vedi “Per il firmware”.';
     els.write.disabled = !p.ok || !nfcSupported;
   }
 
