@@ -91,6 +91,9 @@
     font-family:var(--mono); font-size:12px; text-decoration:underline; cursor:pointer; padding:8px; text-align:center}
   .erase-link:hover{color:var(--muted)}
   .erase-link:disabled{opacity:.4; cursor:not-allowed; text-decoration:none}
+  .initnote{margin-top:8px; font-size:11.5px; line-height:1.55; color:var(--muted); border:1px dashed var(--line);
+    border-radius:10px; padding:10px 12px}
+  .initnote b{color:var(--ink); font-weight:500}
 
   details{margin-top:14px; border:1px solid var(--line); border-radius:12px; background:var(--panel); overflow:hidden}
   summary{cursor:pointer; list-style:none; padding:14px 16px; font-size:13.5px; font-weight:500;
@@ -168,7 +171,8 @@
 </div>
 
 <div class="status" id="status">Pronto. Inserisci i valori, tocca “Scrivi su tag”, appoggia il telefono sul chip e tienilo fermo finché non compare “Scritto”.</div>
-<button class="erase-link" id="btn-erase">Azzera tag · ripristina un NDEF vuoto</button>
+<button class="erase-link" id="btn-erase">Azzera tag · scrive 0 / 0° / 0°</button>
+<div class="initnote">Un tag <b>nuovo o vuoto</b> va inizializzato <b>una volta</b> con l'app ST25 (Initialize NDEF). Web NFC non sa creare la struttura NDEF da zero sui tag ISO 15693: dopo l'init, scrittura e lettura da qui funzionano.</div>
 
 <details>
   <summary>Per il firmware — dove leggere via I2C <span class="ic">{ }</span></summary>
@@ -320,15 +324,17 @@
     }
   });
 
-  // ERASE / reset
+  // ERASE / reset -> scrive uno stato 0/0/0 valido (parsabile dal firmware)
   els.erase.addEventListener('click', async function(){
-    setStatus('Appoggia il telefono sul tag e tienilo fermo per azzerarlo…','busy');
+    setStatus('Appoggia il telefono sul tag e tienilo fermo per azzerare…','busy');
     try{
       var w = new NDEFReader();
-      await w.write({ records:[{ recordType:'empty' }] });
-      setStatus('Tag azzerato: struttura NDEF ripristinata. Ora puoi scrivere i valori.','ok');
+      var zero = new Uint8Array(6); // PPR=0, A=0, B=0
+      await w.write({ records:[{ recordType:'unknown', data: zero.buffer }] });
+      els.ppr.value=0; els.la.value='0.00'; els.lb.value='0.00'; render();
+      setStatus('Tag azzerato: PPR 0 · A 0,00° · B 0,00°.','ok');
     }catch(err){
-      setStatus(friendly(err),'err');
+      setStatus(friendly(err) + '\n\nSe il tag è nuovo o vuoto: va inizializzato una volta con l\'app ST25 (Web NFC non crea la struttura NDEF da zero sui tag ISO 15693).','err');
     }
   });
 
@@ -340,9 +346,9 @@
   function friendly(err){
     var n = err && err.name ? err.name : '';
     if(n==='NotAllowedError') return 'Permesso NFC negato o NFC spento. Attiva l\'NFC nelle impostazioni e consenti alla pagina di usarlo.';
-    if(n==='NotSupportedError') return 'Questo dispositivo o browser non supporta Web NFC. Serve Chrome per Android.';
+    if(n==='NotSupportedError') return 'Connessione al tag non riuscita. Se il tag è nuovo o vuoto, inizializzalo una volta con l\'app ST25: Web NFC non formatta da zero i tag ISO 15693. (Altrimenti: serve Chrome per Android.)';
     if(n==='AbortError') return 'Operazione annullata.';
-    if(n==='NetworkError') return 'Comunicazione col tag interrotta. Tieni il telefono fermo sul chip e riprova.';
+    if(n==='NetworkError') return 'Scrittura interrotta: perso il contatto col tag. Tieni il telefono fermo e appoggiato. Se la scheda è alimentata, spegnila durante la scrittura: l\'accesso I2C dell\'MCU può bloccare la scrittura via NFC.';
     return 'Errore: ' + (err && err.message ? err.message : n || 'sconosciuto');
   }
 
