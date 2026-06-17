@@ -87,6 +87,11 @@
   .status.err{color:var(--red); border-color:#5b2233; background:#1b1013}
   .status.busy{color:var(--amber); border-color:#6e5215; background:#1a1408}
 
+  .erase-link{display:block; width:100%; margin-top:10px; background:none; border:0; color:var(--faint);
+    font-family:var(--mono); font-size:12px; text-decoration:underline; cursor:pointer; padding:8px; text-align:center}
+  .erase-link:hover{color:var(--muted)}
+  .erase-link:disabled{opacity:.4; cursor:not-allowed; text-decoration:none}
+
   details{margin-top:14px; border:1px solid var(--line); border-radius:12px; background:var(--panel); overflow:hidden}
   summary{cursor:pointer; list-style:none; padding:14px 16px; font-size:13.5px; font-weight:500;
     display:flex; align-items:center; justify-content:space-between}
@@ -162,17 +167,18 @@
   </button>
 </div>
 
-<div class="status" id="status">Pronto. Inserisci i valori, poi tocca “Scrivi su tag” e avvicina il telefono al chip.</div>
+<div class="status" id="status">Pronto. Inserisci i valori, tocca “Scrivi su tag”, appoggia il telefono sul chip e tienilo fermo finché non compare “Scritto”.</div>
+<button class="erase-link" id="btn-erase">Azzera tag · ripristina un NDEF vuoto</button>
 
 <details>
   <summary>Per il firmware — dove leggere via I2C <span class="ic">{ }</span></summary>
   <div class="fw">
-    <p>La memoria utente è leggibile in I2C a partire da <b style="color:var(--amber)">0x0000</b>. I primi byte sono il Capability Container: <b style="color:var(--ink)">4 byte sul 04KC</b>, <b style="color:var(--ink)">8 byte su 16KC e 64KC</b>. Questi 4 byte di differenza spostano tutto ciò che segue, quindi l'indirizzo assoluto del payload cambia solo tra il 04KC e gli altri due. Il record scritto da questa app è di tipo MIME <code>application/octet-stream</code> con payload di 6 byte.</p>
+    <p>La memoria utente è leggibile in I2C a partire da <b style="color:var(--amber)">0x0000</b>. I primi byte sono il Capability Container: <b style="color:var(--ink)">4 byte sul 04KC</b>, <b style="color:var(--ink)">8 byte su 16KC e 64KC</b>. Questi 4 byte di differenza spostano tutto ciò che segue, quindi l'indirizzo assoluto del payload cambia solo tra il 04KC e gli altri due. Il record scritto da questa app è un record NDEF di tipo <code>unknown</code> (TNF 0x05, senza campo type): cortissimo, così la scrittura è quasi istantanea e difficile da interrompere.</p>
     <table>
       <tr><th>Campo</th><th>Payload</th><th>04KC (CC 4B)</th><th>16 / 64KC (CC 8B)</th></tr>
-      <tr><td>PPR</td><td>byte 0–1</td><td><b>0x21 (33)</b></td><td><b>0x25 (37)</b></td></tr>
-      <tr><td>Limit A</td><td>byte 2–3</td><td><b>0x23 (35)</b></td><td><b>0x27 (39)</b></td></tr>
-      <tr><td>Limit B</td><td>byte 4–5</td><td><b>0x25 (37)</b></td><td><b>0x29 (41)</b></td></tr>
+      <tr><td>PPR</td><td>byte 0–1</td><td><b>0x09 (9)</b></td><td><b>0x0D (13)</b></td></tr>
+      <tr><td>Limit A</td><td>byte 2–3</td><td><b>0x0B (11)</b></td><td><b>0x0F (15)</b></td></tr>
+      <tr><td>Limit B</td><td>byte 4–5</td><td><b>0x0D (13)</b></td><td><b>0x11 (17)</b></td></tr>
     </table>
     <p>Il modo robusto, valido per <b style="color:var(--ink)">entrambi</b> i chip, è non fissare l'indirizzo ma fare il parsing del TLV: il parser sotto rileva da solo la lunghezza del CC dal byte 2 (<code>0x00</code> → CC di 8 byte). <b style="color:var(--ink)">Conferma una volta</b> con un dump I2C: dopo il CC deve esserci <code>0x03</code>.</p>
 <pre><span class="c">// Legge i 6 byte di payload dal tag — funziona su 04KC, 16KC e 64KC.</span>
@@ -209,7 +215,8 @@
     status: document.getElementById('status'),
     nfc: document.getElementById('nfc'),
     write: document.getElementById('btn-write'),
-    read: document.getElementById('btn-read')
+    read: document.getElementById('btn-read'),
+    erase: document.getElementById('btn-erase')
   };
 
   function pprVal(){ var v = parseFloat(els.ppr.value); if(isNaN(v)) return NaN; v = Math.round(v); return (v<0||v>100) ? NaN : v; }
@@ -246,7 +253,7 @@
       html += '<div class="byte '+cls[i]+'"><div class="off">'+i+'</div><div class="hex">'+(p.ok?hx(p.buf[i]):'··')+'</div><div class="tag">'+tag[i]+'</div></div>';
     }
     els.map.innerHTML = html;
-    els.mapnote.innerHTML = 'Ordine: <b>'+(le?'little-endian':'big-endian')+'</b>. Nel tag questi 6 byte finiscono in coda al record NDEF — PPR all\'indirizzo I2C <b>0x21</b> sul 04KC, <b>0x25</b> su 16/64KC. Vedi “Per il firmware”.';
+    els.mapnote.innerHTML = 'Ordine: <b>'+(le?'little-endian':'big-endian')+'</b>. Nel tag questi 6 byte finiscono in coda al record NDEF — PPR all\'indirizzo I2C <b>0x09</b> sul 04KC, <b>0x0D</b> su 16/64KC. Vedi “Per il firmware”.';
     els.write.disabled = !p.ok || !nfcSupported;
   }
 
@@ -270,7 +277,7 @@
     els.nfc.className='chip ok'; els.nfc.innerHTML='<span class="dot"></span>NFC disponibile';
   } else {
     els.nfc.className='chip no'; els.nfc.innerHTML='<span class="dot"></span>NFC non disponibile';
-    els.write.disabled=true; els.read.disabled=true;
+    els.write.disabled=true; els.read.disabled=true; els.erase.disabled=true;
     setStatus('Web NFC non è supportato qui. Apri questa pagina su Chrome per Android (non funziona su iPhone né su desktop).','err');
   }
 
@@ -278,10 +285,10 @@
   els.write.addEventListener('click', async function(){
     var p = buildPayload();
     if(!p.ok){ setStatus('Controlla i valori: qualcuno è fuori intervallo o vuoto.','err'); return; }
-    setStatus('Avvicina il telefono al tag per scrivere…','busy');
+    setStatus('Appoggia il telefono sul tag e tienilo fermo finché non compare “Scritto”…','busy');
     try{
       var writer = new NDEFReader();
-      await writer.write({ records:[{ recordType:'mime', mediaType:'application/octet-stream', data: p.buf.buffer }] });
+      await writer.write({ records:[{ recordType:'unknown', data: p.buf.buffer }] });
       setStatus('Scritto.\nPPR '+p.ppr+'  ·  A '+(p.la/100).toFixed(2)+'°  ·  B '+(p.lb/100).toFixed(2)+'°\nByte: '+
         hx(p.buf[0])+' '+hx(p.buf[1])+' '+hx(p.buf[2])+' '+hx(p.buf[3])+' '+hx(p.buf[4])+' '+hx(p.buf[5]),'ok');
     }catch(err){
@@ -291,7 +298,7 @@
 
   // READ
   els.read.addEventListener('click', async function(){
-    setStatus('Avvicina il telefono al tag per leggere…','busy');
+    setStatus('Appoggia il telefono sul tag e tienilo fermo per leggere…','busy');
     try{
       var reader = new NDEFReader();
       var ctrl = new AbortController();
@@ -313,10 +320,20 @@
     }
   });
 
+  // ERASE / reset
+  els.erase.addEventListener('click', async function(){
+    setStatus('Appoggia il telefono sul tag e tienilo fermo per azzerarlo…','busy');
+    try{
+      var w = new NDEFReader();
+      await w.write({ records:[{ recordType:'empty' }] });
+      setStatus('Tag azzerato: struttura NDEF ripristinata. Ora puoi scrivere i valori.','ok');
+    }catch(err){
+      setStatus(friendly(err),'err');
+    }
+  });
+
   function pickRecord(records){
-    var i, r;
-    for(i=0;i<records.length;i++){ r=records[i]; if(r.mediaType==='application/octet-stream' && r.data && r.data.byteLength>=6) return r; }
-    for(i=0;i<records.length;i++){ r=records[i]; if(r.data && r.data.byteLength>=6) return r; }
+    for(var i=0;i<records.length;i++){ var r=records[i]; if(r.data && r.data.byteLength>=6) return r; }
     return null;
   }
 
